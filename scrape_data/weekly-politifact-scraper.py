@@ -299,12 +299,12 @@ def main_flow():
 if __name__ == "__main__":
     flow.from_source(
         "https://github.com/Taciturny/fact-checking-news-project.git",  # Replace with your repo URL
-        entrypoint="weekly-politifact-scraper.py:main_flow"  # Path to your flow file and function name
+        entrypoint="scrape_data/weekly-politifact-scraper.py:main_flow"  # Path to your flow file and function name
     ).deploy(
         name="weekly-politifact-scraper",
         work_pool_name="politifact_pool",  # Make sure this work pool exists in Prefect
         build=False,  # Set to False if no Docker image is being built
-        cron="0 8 * * 2"  # This schedules the flow to run every Tuesday at 6 AM
+        cron="0 8 * * 2"  # This schedules the flow to run every Tuesday at 8 AM
     )
 
 # main_flow.serve(name="weekly-politifact-scraper", cron="0 6 * * 2")
