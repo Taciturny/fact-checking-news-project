@@ -134,7 +134,6 @@
 
 from prefect import flow, task
 from prefect.task_runners import ThreadPoolTaskRunner
-# from prefect.schedules import IntervalSchedule
 from datetime import timedelta
 import requests
 from bs4 import BeautifulSoup
@@ -147,7 +146,6 @@ from nltk.tokenize import sent_tokenize
 from nltk.corpus import stopwords
 from nltk.cluster.util import cosine_distance
 import numpy as np
-# from prefect.schedules import CronSchedule
 
 
 @task
@@ -304,7 +302,8 @@ if __name__ == "__main__":
         name="weekly-politifact-scraper",
         work_pool_name="politifact_pool",  # Make sure this work pool exists in Prefect
         build=False,  # Set to False if no Docker image is being built
-        cron="0 8 * * 2"  # This schedules the flow to run every Tuesday at 8 AM
+        cron="0 7 * * 2", # This schedules the flow to run every Tuesday at 7 AM
+        ignore_warnings=True
     )
 
 # main_flow.serve(name="weekly-politifact-scraper", cron="0 6 * * 2")
