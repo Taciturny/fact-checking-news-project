@@ -304,7 +304,7 @@ if __name__ == "__main__":
         name="weekly-politifact-scraper",
         work_pool_name="politifact_pool",  # Make sure this work pool exists in Prefect
         build=False,  # Set to False if no Docker image is being built
-        cron="0 6 * * 2"  # This schedules the flow to run every Tuesday at 6 AM
+        cron="0 8 * * 2"  # This schedules the flow to run every Tuesday at 6 AM
     )
 
 # main_flow.serve(name="weekly-politifact-scraper", cron="0 6 * * 2")
