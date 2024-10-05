@@ -292,7 +292,7 @@ def update_database(new_data, database_path='../data/politifact_fact_checks.csv'
 
 
 @flow(task_runner=ThreadPoolTaskRunner(max_workers=10))
-def main():
+def main_flow():
     base_url = 'https://www.politifact.com/factchecks/list/'
     num_pages = 2
 
