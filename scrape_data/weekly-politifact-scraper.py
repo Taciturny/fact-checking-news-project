@@ -222,62 +222,69 @@ def get_existing_entries(database_path='../data/politifact_fact_checks.csv'):
 @task(name="scrape_politifact")
 def scrape_politifact(base_url, num_pages, existing_links, existing_claims):
     fact_checks = []
-    new_articles_count = 0
-    consecutive_existing_articles = 0
-    max_consecutive_existing = 60  # Stop after finding 60 consecutive existing articles (2 full pages)
+    try:
+        new_articles_count = 0
+        consecutive_existing_articles = 0
+        max_consecutive_existing = 60  # Stop after finding 60 consecutive existing articles (2 full pages)
 
-    for page in range(1, num_pages + 1):
-        url = f"{base_url}?page={page}"
-        print(f"Scraping page {page}...")
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, 'html.parser')
+        for page in range(1, num_pages + 1):
+            url = f"{base_url}?page={page}"
+            logging.info(f"Scraping page {page}...")
+            response = requests.get(url)
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-        articles = soup.find_all('article', class_='m-statement')
-        page_new_articles = 0
+            articles = soup.find_all('article', class_='m-statement')
+            page_new_articles = 0
 
-        for article in articles:
-            try:
-                claim = safe_extract(article, '.m-statement__quote')
-                link_element = article.select_one('.m-statement__content a')
-                link = link_element['href'] if link_element else "N/A"
-                full_link = f"https://www.politifact.com{link}" if link != "N/A" else "N/A"
+            for article in articles:
+                try:
+                    claim = safe_extract(article, '.m-statement__quote')
+                    link_element = article.select_one('.m-statement__content a')
+                    link = link_element['href'] if link_element else "N/A"
+                    full_link = f"https://www.politifact.com{link}" if link != "N/A" else "N/A"
 
-                if full_link in existing_links or claim in existing_claims:
-                    consecutive_existing_articles += 1
-                    if consecutive_existing_articles >= max_consecutive_existing:
-                        print(f"Found {max_consecutive_existing} consecutive existing articles. Stopping the scrape.")
-                        logging.info(f"Scraped {len(fact_checks)} new fact checks.")
-                        return fact_checks
-                    continue
+                    if full_link in existing_links or claim in existing_claims:
+                        consecutive_existing_articles += 1
+                        if consecutive_existing_articles >= max_consecutive_existing:
+                            logging.info(f"Found {max_consecutive_existing} consecutive existing articles. Stopping the scrape.")
+                            logging.info(f"Scraped {len(fact_checks)} new fact checks.")
+                            return fact_checks
+                        continue
 
-                consecutive_existing_articles = 0  # Reset the counter when a new article is found
+                    consecutive_existing_articles = 0  # Reset the counter when a new article is found
 
-                verdict = safe_extract(article, '.m-statement__meter img', 'alt')
-                source_element = article.select_one('.m-statement__meta .m-statement__name')
-                source = source_element.get_text(strip=True) if source_element else "N/A"
+                    verdict = safe_extract(article, '.m-statement__meter img', 'alt')
+                    source_element = article.select_one('.m-statement__meta .m-statement__name')
+                    source = source_element.get_text(strip=True) if source_element else "N/A"
 
-                article_content = scrape_article_page(full_link) if full_link != "N/A" else {'summary': "N/A"}
+                    article_content = scrape_article_page(full_link) if full_link != "N/A" else {'summary': "N/A"}
 
-                fact_checks.append({
-                    'claim': claim,
-                    'verdict': verdict,
-                    'summary': article_content['summary'],
-                    'source': source,
-                    'link': full_link
-                })
+                    fact_checks.append({
+                        'claim': claim,
+                        'verdict': verdict,
+                        'summary': article_content['summary'],
+                        'source': source,
+                        'link': full_link
+                    })
 
-                new_articles_count += 1
-                page_new_articles += 1
-                # print(f"Scraped new article: {claim[:50]}...")
-                time.sleep(random.uniform(1, 2))
-            except Exception as e:
-                print(f"Error processing an article: {e}")
+                    new_articles_count += 1
+                    page_new_articles += 1
+                    logging.debug(f"Scraped new article: {claim[:50]}...")
+                    time.sleep(random.uniform(1, 2))
+                except Exception as e:
+                    logging.error(f"Error processing an article: {e}")
 
-        print(f"Scraped {new_articles_count} new articles so far.")
+            logging.info(f"Scraped {new_articles_count} new articles so far.")
 
-        if page_new_articles == 0:
-            print("No new articles on this page. Stopping the scrape.")
-            break
+            if page_new_articles == 0:
+                logging.info("No new articles on this page. Stopping the scrape.")
+                break
+
+        logging.info(f"Scraped a total of {len(fact_checks)} new fact checks.")
+        return fact_checks
+    except Exception as e:
+        logging.error(f"Error occurred while scraping: {str(e)}")
+        return []
 
 
 @task(name="update_database")
@@ -295,51 +302,94 @@ def update_database(new_data, database_path='../data/politifact_fact_checks.csv'
     updated_db = updated_db.drop_duplicates(subset=['link', 'claim'], keep='last')
     updated_db.to_csv(database_path, index=False, quoting=csv.QUOTE_ALL)
 
-    print(f"Database updated. Total entries: {len(updated_db)}")
+    # print(f"Database updated. Total entries: {len(updated_db)}")
     logging.info(f"Database updated. Total entries: {len(updated_db)}")
     return len(updated_db)
 
 
 # @flow(task_runner=ThreadPoolTaskRunner(max_workers=10))
-@flow
+@flow(name="politifact_scraper")
 def main_flow():
     logging.info("Starting PolitiFact scraper flow")
     base_url = 'https://www.politifact.com/factchecks/list/'
     num_pages = 2
 
-    print("Starting database update...")
-    print(f"Script started at {datetime.now()}")
     logging.info(f"Script started at {datetime.now()}")
 
-    existing_links, existing_claims = get_existing_entries()
-    logging.info(f"Found {len(existing_links)} existing links and {len(existing_claims)} existing claims.")
+    try:
+        existing_links, existing_claims = get_existing_entries()
+        logging.info(f"Found {len(existing_links)} existing links and {len(existing_claims)} existing claims.")
 
-    new_fact_checks = scrape_politifact(base_url, num_pages, existing_links, existing_claims)
-    logging.info(f"Scraped {len(new_fact_checks)} new fact checks.")
+        new_fact_checks = scrape_politifact(base_url, num_pages, existing_links, existing_claims)
 
-    if new_fact_checks:
-        total_entries = update_database(new_fact_checks)
-        logging.info(f"Added {len(new_fact_checks)} new fact checks. Total entries: {total_entries}")
-        print(f"Added {len(new_fact_checks)} new fact checks.")
-    else:
-        print("No new fact checks found.")
-        logging.info("No new fact checks found. Database not updated.")
+        if new_fact_checks is None:
+            logging.warning("scrape_politifact returned None. No new fact checks were scraped.")
+            new_fact_checks = []
 
-    print("Update completed.")
-    print(f"Script completed at {datetime.now()}")
+        logging.info(f"Scraped {len(new_fact_checks)} new fact checks.")
+
+        if new_fact_checks:
+            total_entries = update_database(new_fact_checks)
+            logging.info(f"Added {len(new_fact_checks)} new fact checks. Total entries: {total_entries}")
+        else:
+            logging.info("No new fact checks found. Database not updated.")
+
+    except Exception as e:
+        logging.error(f"An error occurred during the main flow: {str(e)}")
+        raise
+
     logging.info(f"Script completed at {datetime.now()}")
 
 if __name__ == "__main__":
-    flow.from_source(
-        "https://github.com/Taciturny/fact-checking-news-project.git",  # Replace with your repo URL
-        entrypoint="scrape_data/weekly-politifact-scraper.py:main_flow"  # Path to your flow file and function name
-    ).deploy(
+    from prefect.deployments import Deployment
+    from prefect.server.schemas.schedules import CronSchedule
+
+    deployment = Deployment.build_from_flow(
+        flow=main_flow,
         name="weekly-politifact-scraper",
-        work_pool_name="politifact_pool",  # Make sure this work pool exists in Prefect
-        build=False,  # Set to False if no Docker image is being built
-        cron="0 7 * * 2", # This schedules the flow to run every Tuesday at 7 AM
+        work_queue_name="politifact_queue",
+        schedule=CronSchedule(cron="0 15 * * *", timezone="UTC"),
         ignore_warnings=True
     )
+    deployment.apply()
+# def main_flow():
+#     logging.info("Starting PolitiFact scraper flow")
+#     base_url = 'https://www.politifact.com/factchecks/list/'
+#     num_pages = 2
+
+#     print("Starting database update...")
+#     print(f"Script started at {datetime.now()}")
+#     logging.info(f"Script started at {datetime.now()}")
+
+#     existing_links, existing_claims = get_existing_entries()
+#     logging.info(f"Found {len(existing_links)} existing links and {len(existing_claims)} existing claims.")
+
+#     new_fact_checks = scrape_politifact(base_url, num_pages, existing_links, existing_claims)
+#     logging.info(f"Scraped {len(new_fact_checks)} new fact checks.")
+
+#     if new_fact_checks:
+#         total_entries = update_database(new_fact_checks)
+#         logging.info(f"Added {len(new_fact_checks)} new fact checks. Total entries: {total_entries}")
+#         print(f"Added {len(new_fact_checks)} new fact checks.")
+#     else:
+#         print("No new fact checks found.")
+#         logging.info("No new fact checks found. Database not updated.")
+
+#     print("Update completed.")
+#     print(f"Script completed at {datetime.now()}")
+#     logging.info(f"Script completed at {datetime.now()}")
+
+# if __name__ == "__main__":
+#     flow.from_source(
+#         "https://github.com/Taciturny/fact-checking-news-project.git",  # Replace with your repo URL
+#         entrypoint="scrape_data/weekly-politifact-scraper.py:main_flow"  # Path to your flow file and function name
+#     ).deploy(
+#         name="weekly-politifact-scraper",
+#         work_pool_name="politifact_pool",  # Make sure this work pool exists in Prefect
+#         build=False,  # Set to False if no Docker image is being built
+#         cron="0 7 * * 2", # This schedules the flow to run every Tuesday at 7 AM
+#         ignore_warnings=True
+#     )
 
 # main_flow.serve(name="weekly-politifact-scraper", cron="0 6 * * 2")
 #     schedule = CronSchedule(cron="0 14 * * 1,3,4")
