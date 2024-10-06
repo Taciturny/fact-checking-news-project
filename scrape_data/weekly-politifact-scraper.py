@@ -238,6 +238,7 @@ def scrape_politifact(base_url, num_pages, existing_links, existing_claims):
         url = f"{base_url}?page={page}"
         print(f"Scraping page {page}...")
         response = requests.get(url)
+        response.encoding = 'utf-8'
         soup = BeautifulSoup(response.content, 'html.parser')
 
         articles = soup.find_all('article', class_='m-statement')
@@ -299,7 +300,8 @@ def update_database(new_data, database_path='politifact_fact_checks.csv'):
         full_database_path = os.path.join(project_root, 'data', database_path)
 
         if os.path.exists(full_database_path):
-            existing_db = pd.read_csv(full_database_path)
+            # existing_db = pd.read_csv(full_database_path)
+            existing_db = pd.read_csv(full_database_path, encoding='utf-8', errors='replace')
             logging.info(f"Loaded existing database with {len(existing_db)} entries.")
         else:
             logging.warning(f"Database file not found. Creating new database.")
@@ -312,7 +314,8 @@ def update_database(new_data, database_path='politifact_fact_checks.csv'):
         # Ensure the directory exists
         os.makedirs(os.path.dirname(full_database_path), exist_ok=True)
 
-        updated_db.to_csv(full_database_path, index=False, quoting=csv.QUOTE_ALL)
+        # updated_db.to_csv(full_database_path, index=False, quoting=csv.QUOTE_ALL)
+        updated_db.to_csv(full_database_path, index=False, quoting=csv.QUOTE_ALL, encoding='utf-8', errors='replace')
 
         print(f"Database updated. Total entries: {len(updated_db)}")
         logging.info(f"Database updated. Total entries: {len(updated_db)}")
@@ -326,7 +329,7 @@ def update_database(new_data, database_path='politifact_fact_checks.csv'):
 def main_flow():
     logging.info("Starting PolitiFact scraper flow")
     base_url = 'https://www.politifact.com/factchecks/list/'
-    num_pages = 2
+    num_pages = 1
 
     print("Starting database update...")
     print(f"Script started at {datetime.now()}")
