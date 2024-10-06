@@ -133,8 +133,8 @@
 
 
 from prefect import flow, task
-from prefect.task_runners import ThreadPoolTaskRunner
-from datetime import timedelta
+# from prefect.task_runners import ThreadPoolTaskRunner
+import logging
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -147,8 +147,9 @@ from nltk.corpus import stopwords
 from nltk.cluster.util import cosine_distance
 import numpy as np
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-@task
+@task(name="safe_extract")
 def safe_extract(element, selector, attribute=None):
     found = element.select_one(selector) if element else None
     if not found:
@@ -190,7 +191,7 @@ def sentence_similarity(sent1, sent2):
 
     return 1 - cosine_distance(vector1, vector2)
 
-@task
+@task(name="scrape_article_page")
 def scrape_article_page(url):
     try:
         response = requests.get(url)
@@ -208,15 +209,17 @@ def scrape_article_page(url):
         print(f"Error scraping article page: {e}")
         return {'summary': "N/A"}
 
-@task
+@task(name="get_existing_entries")
 def get_existing_entries(database_path='../data/politifact_fact_checks.csv'):
     try:
         existing_db = pd.read_csv(database_path)
+        logging.info(f"Found {len(existing_db)} existing entries in the database.")
         return set(existing_db['link']), set(existing_db['claim'])
     except FileNotFoundError:
+        logging.warning(f"Database file not found at {database_path}. Starting with empty sets.")
         return set(), set()
 
-@task
+@task(name="scrape_politifact")
 def scrape_politifact(base_url, num_pages, existing_links, existing_claims):
     fact_checks = []
     new_articles_count = 0
@@ -243,6 +246,7 @@ def scrape_politifact(base_url, num_pages, existing_links, existing_claims):
                     consecutive_existing_articles += 1
                     if consecutive_existing_articles >= max_consecutive_existing:
                         print(f"Found {max_consecutive_existing} consecutive existing articles. Stopping the scrape.")
+                        logging.info(f"Scraped {len(fact_checks)} new fact checks.")
                         return fact_checks
                     continue
 
@@ -276,11 +280,14 @@ def scrape_politifact(base_url, num_pages, existing_links, existing_claims):
             break
 
 
-@task
+@task(name="update_database")
 def update_database(new_data, database_path='../data/politifact_fact_checks.csv'):
+    logging.info("Starting database update...")
     try:
         existing_db = pd.read_csv(database_path)
+        logging.info(f"Loaded existing database with {len(existing_db)} entries.")
     except FileNotFoundError:
+        logging.warning(f"Database file not found. Creating new database.")
         existing_db = pd.DataFrame(columns=['claim', 'verdict', 'summary', 'source', 'link'])
 
     new_df = pd.DataFrame(new_data)
@@ -289,28 +296,38 @@ def update_database(new_data, database_path='../data/politifact_fact_checks.csv'
     updated_db.to_csv(database_path, index=False, quoting=csv.QUOTE_ALL)
 
     print(f"Database updated. Total entries: {len(updated_db)}")
+    logging.info(f"Database updated. Total entries: {len(updated_db)}")
+    return len(updated_db)
 
 
-@flow(task_runner=ThreadPoolTaskRunner(max_workers=10))
+# @flow(task_runner=ThreadPoolTaskRunner(max_workers=10))
+@flow
 def main_flow():
+    logging.info("Starting PolitiFact scraper flow")
     base_url = 'https://www.politifact.com/factchecks/list/'
     num_pages = 2
 
     print("Starting database update...")
     print(f"Script started at {datetime.now()}")
+    logging.info(f"Script started at {datetime.now()}")
 
     existing_links, existing_claims = get_existing_entries()
+    logging.info(f"Found {len(existing_links)} existing links and {len(existing_claims)} existing claims.")
 
     new_fact_checks = scrape_politifact(base_url, num_pages, existing_links, existing_claims)
+    logging.info(f"Scraped {len(new_fact_checks)} new fact checks.")
 
     if new_fact_checks:
-        update_database(new_fact_checks)
+        total_entries = update_database(new_fact_checks)
+        logging.info(f"Added {len(new_fact_checks)} new fact checks. Total entries: {total_entries}")
         print(f"Added {len(new_fact_checks)} new fact checks.")
     else:
         print("No new fact checks found.")
+        logging.info("No new fact checks found. Database not updated.")
 
     print("Update completed.")
     print(f"Script completed at {datetime.now()}")
+    logging.info(f"Script completed at {datetime.now()}")
 
 if __name__ == "__main__":
     flow.from_source(
