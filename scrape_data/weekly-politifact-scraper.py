@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
 
 if __name__ == "__main__":
-    flow.from_source(
+    main_flow.from_source(
         "https://github.com/Taciturny/fact-checking-news-project.git",  # Replace with your repo URL
         entrypoint="scrape_data/weekly-politifact-scraper.py:main_flow"  # Path to your flow file and function name
     ).deploy(
@@ -221,6 +221,7 @@ if __name__ == "__main__":
 #  prefect work-pool create politifact-scraper
 # prefect worker start --pool politifact-scraper
 # prefect worker start --queue politifact-scraper
+# prefect deployment run 'politifact_scraper/politifact-scraper'
 
 #  prefect deployment run 'politifact_scraper/weekly-politifact-scraper'
 # if __name__ == "__main__":
